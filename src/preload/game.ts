@@ -118,6 +118,7 @@ function processMouseData(data: any, last: any, handles: { move: any, down: any,
             movementY: my,
         }])
     });
+}
 
 async function injectHSP() {
     await waitFor(() => window.windows?.[4] && window.windows[4].gen);
