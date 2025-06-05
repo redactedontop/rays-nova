@@ -14,6 +14,16 @@ switch (context) {
     case Context.Game:
         preload = new GamePreload();
         preload.onLoadStart?.();
+
+        try {
+            // extra preload capability
+            let loader = require('./loader');
+
+            if (loader && loader.default) {
+                (new loader.default()).onLoadStart?.();
+            }
+        } catch {}
+        
         break;
     case Context.Editor:
         preload = new EditorPreload();

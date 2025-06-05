@@ -4,10 +4,11 @@ import UI from '../ui';
 import AltManagerUI from '../ui/altmanager';
 import Button from '../options/button';
 import TextInput from '../options/textinput';
+import { waitFor } from '../util';
+import Keybind, { KeyType } from '../options/keybind';
 
-let encryptionKey =
-    'a5de16da0bb09720a7a917736c3be0beddc4418816c5f469a31419f1f6d5e592';
-let encrypt = (data: string) => {
+let encryptionKey = 'a5de16da0bb09720a7a917736c3be0beddc4418816c5f469a31419f1f6d5e592';
+export let encrypt = (data: string) => {
     let out = '';
     for (let i = 0; i < data.length; i++) {
         out += String.fromCharCode(
@@ -36,6 +37,11 @@ class AddAltUI extends UI {
                     name: 'Password',
                     type: 'password',
                 }),
+                new Keybind(this.module, {
+                    id: 'editui.keybind',
+                    description: '',
+                    name: 'Keybind',
+                }),
             ],
         },
     ];
@@ -49,10 +55,9 @@ class AddAltUI extends UI {
             id: '',
             description: '',
             onChange: () => {
-                let username = this.module.config
-                    .get('editui.username', '')
-                    .toLowerCase();
+                let username = this.module.config.get('editui.username', '').toLowerCase();
                 let password = this.module.config.get('editui.password', '');
+                let keybind = this.module.config.get('editui.keybind', []);
 
                 if (!username || !password)
                     return (this.module as AltManager).ui.open();
@@ -67,20 +72,24 @@ class AddAltUI extends UI {
                 } catch {}
 
                 let altIndex = alts.findIndex((a) => a.username === username);
-                if (altIndex !== -1)
+
+                if (altIndex !== -1) {
                     alts[altIndex].password = encrypt(password);
-                else
+                    alts[altIndex].keybind = keybind;
+                } else {
                     alts.push({
                         username,
                         password: encrypt(password),
+                        keybind,
                     });
+                }
 
-                window.localStorage.setItem(
-                    'taxAltManager',
-                    JSON.stringify(alts)
-                );
+                window.localStorage.setItem('taxAltManager', JSON.stringify(alts));
+
                 this.module.config.delete('editui.username');
                 this.module.config.delete('editui.password');
+                this.module.config.delete('editui.keybind');
+
                 (this.module as AltManager).ui.open();
             },
         }),
@@ -94,6 +103,8 @@ class AddAltUI extends UI {
             onChange: () => {
                 this.module.config.delete('editui.username');
                 this.module.config.delete('editui.password');
+                this.module.config.delete('editui.keybind');
+                
                 (this.module as AltManager).ui.open();
             },
         }),
@@ -138,6 +149,44 @@ export default class AltManager extends Module {
             this.button.style[style] = firstStyle[style];
         document.getElementById('signedOutHeaderBar').append(this.button);
         this.button.onclick = () => this.ui.open();
+
+        document.addEventListener('keydown', this.keyListener.bind(this));
+        document.addEventListener('mousedown', this.keyListener.bind(this));
+    }
+
+    keyListener(event: KeyboardEvent | MouseEvent) {
+        let key = Keybind.eventToKey(event);
+        let alts = [];
+
+        try {
+            let parsed = JSON.parse(
+                window.localStorage.getItem('taxAltManager')
+            );
+            if (Array.isArray(parsed)) alts = parsed;
+        } catch {}
+
+        for (let i = 0; i < alts.length; i++) {
+            let alt = alts[i];
+            let bind = Keybind.parseKey(alt.keybind);
+
+            if (
+                bind &&
+                bind.type === key.type
+            ) {
+                let matched = false;
+
+                if (bind.type === KeyType.KEYBOARD) {
+                    matched = bind.key === key.key &&
+                        bind.ctrl == key.ctrl &&
+                        bind.shift == key.shift &&
+                        bind.alt == key.alt;
+                } else {
+                    matched = bind.button === key.button;
+                }
+                
+                if (matched) return this.loginAlt(alt.username);
+            };
+        }
     }
 
     loginAlt(username: string) {
@@ -153,21 +202,40 @@ export default class AltManager extends Module {
         let alt = alts.find((a) => a.username === username);
         if (!alt) return;
 
-        for (let i = 0; i < 2; i++) {
-            window.showWindow(5);
-        }
+        document.exitPointerLock();
 
-        let windowHolder = document.getElementById('windowHolder');
-        let usernameInput = document.getElementById('accName');
-        let passwordInput = document.getElementById('accPass');
+        window.showWindow(0);
+        window.loginOrRegister();
 
-        if (!windowHolder || !usernameInput || !passwordInput) return;
-        windowHolder.style.display = '';
+        let loginPopup = document.getElementById('login_popup');
+        
+        if(!loginPopup) return;
+
+        let [usernameInput, passwordInput] = loginPopup.querySelectorAll('input');
+        if (!usernameInput || !passwordInput) return;
+
+        let [_, toggleBtn, __, loginBtn] = document.getElementById('login_popup').querySelectorAll('button');
+        if (!toggleBtn || !loginBtn) return;
+
+        if (toggleBtn.textContent.includes('username')) toggleBtn.click();
 
         (usernameInput as HTMLInputElement).value = alt.username;
         (passwordInput as HTMLInputElement).value = encrypt(alt.password);
 
-        setTimeout(() => window.loginAcc(), 100);
+        // Svelte :P
+        usernameInput.dispatchEvent(new Event('input'));
+        passwordInput.dispatchEvent(new Event('input'));
+
+        setTimeout(async () => {
+            loginBtn.click();
+
+            let captcha = await waitFor(
+                () => document.getElementById('altcha_checkbox'),
+                1000
+            ) as HTMLElement | undefined;
+
+            if (captcha) captcha.click();
+        }, 100);
     }
 
     editAlt(username?: string) {
@@ -187,6 +255,7 @@ export default class AltManager extends Module {
 
         this.config.set('editui.username', alt.username);
         this.config.set('editui.password', encrypt(alt.password));
+        if (alt.keybind) this.config.set('editui.keybind', alt.keybind);
         this.addAltUI.open();
     }
 }

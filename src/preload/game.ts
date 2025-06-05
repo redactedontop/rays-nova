@@ -5,12 +5,14 @@ import '../types/window';
 import { join } from 'path';
 import { branch, commit } from '../../buildinfo.json';
 import { ipcRenderer } from 'electron/renderer';
+import { waitFor } from '../util';
 
 export default class GamePreload extends Preload {
     context = Context.Game;
 
     onLoadStart() {
         window.OffCliV = true;
+        localStorage.removeItem('conUID_'); // anti tracking
     }
 
     onLoadEnd() {
@@ -27,6 +29,7 @@ export default class GamePreload extends Preload {
         document.head.append(style);
 
         injectWatermark();
+        injectHSP();
     }
 }
 
@@ -59,7 +62,7 @@ function loadMouseDriver() {
             if (document.pointerLockElement && document.pointerLockElement.nodeName === 'CANVAS') {
                 if (!move) {
                     let listeners = (window as any).getEventListeners(document.pointerLockElement);
-                        
+
                     if (listeners.pointerrawupdate && listeners.pointerrawupdate.length) {
                         move = listeners.pointerrawupdate[0].listener;
                         document.pointerLockElement.removeEventListener('pointerrawupdate', move);
@@ -115,4 +118,43 @@ function processMouseData(data: any, last: any, handles: { move: any, down: any,
             movementY: my,
         }])
     });
+
+async function injectHSP() {
+    await waitFor(() => window.windows?.[4] && window.windows[4].gen);
+
+    const ogen = window.windows[4].gen;
+    window.windows[4].gen = function () {
+        setTimeout(() => {
+            let statHolder = document.getElementById('statHolder');
+            if (!statHolder) return;
+
+            let stats = statHolder.children[2].children;
+
+            let hits = -1;
+            let headshots = -1;
+            let accuracyInd = -1;
+
+            for (let i = 0; i < stats.length; i++) {
+                let stat = stats[i];
+                let statName = stat.childNodes[0].textContent;
+
+                if (statName == 'Hits') {
+                    hits = Number(stat.childNodes[1].textContent.replaceAll(',', ''));
+                } else if (statName == 'Headshots') {
+                    headshots = Number(stat.childNodes[1].textContent.replaceAll(',', ''));
+                } else if (statName == 'Accuracy') {
+                    accuracyInd = i;
+                }
+            }
+
+            if (hits == -1 || headshots == -1 || accuracyInd == -1) return;
+
+            let hsp = stats[0].cloneNode(true);
+            hsp.childNodes[0].textContent = 'HS%';
+            hsp.childNodes[1].textContent = (headshots / hits * 100).toFixed(2) + '%';
+
+            statHolder.children[2].insertBefore(hsp, stats[accuracyInd + 1]);
+        });
+        return ogen.apply(this, arguments);
+    };
 }

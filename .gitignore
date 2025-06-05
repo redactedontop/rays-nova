@@ -4,3 +4,4 @@ dist/
 start.vbs
 .*
 build/
+src/preload/loader.ts
