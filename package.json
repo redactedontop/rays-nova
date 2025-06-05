@@ -8,7 +8,7 @@
         "@types/node": "^22.15.29",
         "@types/ws": "^8.18.1",
         "bytenode": "^1.5.7",
-        "electron": "^36.4.0",
+        "electron": "^25.9.8",
         "electron-builder": "^26.0.12",
         "ts-node": "^10.9.2",
         "typescript": "^5.8.3"
